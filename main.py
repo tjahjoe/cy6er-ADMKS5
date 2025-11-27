@@ -8,6 +8,13 @@ import asyncio
 import json
 import requests
 import subprocess
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+rest_api_key = os.getenv("ONE_SIGNAL_API_KEY")
+app_id = os.getenv("ONE_SIGNAL_APP_ID")
 
 def get_connection():
     return mysql.connector.connect(
@@ -16,9 +23,6 @@ def get_connection():
         password="cy6er",
         database="cy6er"
     )
-
-rest_api_key = "os_v2_app_dt4swh7jebb3fm6vyocfu6ek2pswckj4rouu46nzru672ylwhe2idsadf5trpp6dpjpxdmryz2fxk5nucwxod7pzttofhkevcl3r6ra"
-app_id = "1cf92b1f-e920-43b2-b3d5-c3845a748ad3"
 
 def notification(message):
     payload = {

@@ -1,9 +1,12 @@
 import json
 import requests
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
 
-rest_api_key = "os_v2_app_dt4swh7jebb3fm6vyocfu5ek2pswckj4rouu46nzru672ylwhe2idsadf5trpp6dpjpxdmryz2fxk5nucwxod7pzttofhkevcl3r6ra"
-app_id = "1cf92b1f-e920-43b2-b3d5-c3845a748ad3"
+rest_api_key = os.getenv("ONE_SIGNAL_API_KEY")
+app_id = os.getenv("ONE_SIGNAL_APP_ID")
 
 if not rest_api_key or not app_id:
     raise ValueError("ONESIGNAL_REST_API_KEY atau ONESIGNAL_APP_ID tidak ditemukan.")

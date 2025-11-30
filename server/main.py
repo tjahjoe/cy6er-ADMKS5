@@ -126,13 +126,13 @@ def check_ip(data: SSHLog):
 
     set_ip_status(ip)
 
+    insert_log(data)
+
     logs = get_last_6_logs(ip)
 
     if len(logs) == 6:
         if all(row["status"] == "failed" for row in logs):
             block_ip(ip)
-
-    insert_log(data)
 
 app = FastAPI()
 

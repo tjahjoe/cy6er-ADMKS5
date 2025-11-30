@@ -23,7 +23,6 @@
 <body>
 
 <h1>SSH Login Monitor (Realtime)</h1>
-<p id="status">Status: <span style="color:blue">Connecting...</span></p>
 
 <h2>IP Status (Blocked / Allowed)</h2>
 <table>
@@ -117,16 +116,6 @@ async function unblockIP(ip) {
 function startEventStream() {
 
     const evtSource = new EventSource("http://127.0.0.1:8000/stream");
-
-    const status = document.getElementById("status");
-
-    evtSource.onopen = () => {
-        status.innerHTML = 'Status: <span style="color:green">Connected (Live)</span>';
-    };
-
-    evtSource.onerror = () => {
-        status.innerHTML = 'Status: <span style="color:red">Disconnected</span>';
-    };
 
     evtSource.onmessage = (event) => {
         const data = JSON.parse(event.data);

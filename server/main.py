@@ -102,10 +102,10 @@ def _get_recent_logs_blocking(limit=100):
     cursor = conn.cursor(dictionary=True)
     try:
         query = """
-            SELECT l.ip, l.user, l.status, l.timestamp, COALESCE(s.is_blocked,0) as is_blocked
+            SELECT l.ip, l.user, l.status, l.timestamp
             FROM ssh_logs l
             LEFT JOIN ip_status s ON l.ip = s.ip
-            ORDER BY l.id DESC
+            ORDER BY l.timestamp
             LIMIT %s
         """
         cursor.execute(query, (limit,))

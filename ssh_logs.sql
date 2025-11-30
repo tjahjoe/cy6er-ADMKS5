@@ -1,0 +1,8 @@
+CREATE TABLE `ssh_logs` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `ip` VARCHAR(45) NOT NULL,
+  `user` VARCHAR(100) NOT NULL,
+  `status` VARCHAR(20) NOT NULL,
+  `timestamp` DATETIME NOT NULL,
+  PRIMARY KEY (`id`)
+)

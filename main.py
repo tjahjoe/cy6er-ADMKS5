@@ -37,10 +37,43 @@ def notification(message):
         "Authorization": f"Basic {rest_api_key}"
     }
 
-    response = requests.post("https://onesignal.com/api/v1/notifications",
-                             headers=headers, data=json.dumps(payload))
+    response = requests.post(
+        "https://onesignal.com/api/v1/notifications",
+        headers=headers,
+        data=json.dumps(payload)
+    )
 
     print("Notification:", response.text)
+
+def set_ip_status(ip: str):
+    """Tambahkan IP ke ip_status jika belum ada."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT ip FROM ip_status WHERE ip = %s", (ip,))
+    exists = cursor.fetchone()
+
+    if not exists:
+        cursor.execute(
+            "INSERT INTO ip_status (ip, is_blocked) VALUES (%s, 0)",
+            (ip,)
+        )
+        conn.commit()
+
+    cursor.close()
+    conn.close()
+
+
+def update_block_status(ip: str):
+    """Update ip_status.is_blocked = 1 setelah diblokir."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("UPDATE ip_status SET is_blocked = 1 WHERE ip = %s", (ip,))
+    conn.commit()
+
+    cursor.close()
+    conn.close()
 
 
 def block_ip(ip: str):
@@ -49,9 +82,10 @@ def block_ip(ip: str):
             ["sudo", "iptables", "-A", "INPUT", "-s", ip, "-j", "DROP"],
             check=True
         )
+        update_block_status(ip)
         notification(f"ip : {ip}\ncontent : Berhasil diblokir")
-    except:
-        pass
+    except Exception as e:
+        print("Error blocking:", e)
 
 
 def get_last_6_logs(ip: str):
@@ -72,19 +106,6 @@ def get_last_6_logs(ip: str):
     return rows
 
 
-def ip_not_exists(ip: str):
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    query = "SELECT COUNT(*) FROM ssh_logs WHERE ip = %s"
-    cursor.execute(query, (ip,))
-    (count,) = cursor.fetchone()
-
-    cursor.close()
-    conn.close()
-    return count == 0
-
-
 def insert_log(data: SSHLog):
     conn = get_connection()
     cursor = conn.cursor()
@@ -103,17 +124,15 @@ def insert_log(data: SSHLog):
 def check_ip(data: SSHLog):
     ip = data.ip
 
-    if ip_not_exists(ip):
-        notification(f"ip : {ip}\ncontent : Waspada IP baru")
-    else:
-        logs = get_last_6_logs(ip)
+    set_ip_status(ip)
 
-        if len(logs) == 6:
-            if all(row["status"] == "failed" for row in logs):
-                block_ip(ip)
+    logs = get_last_6_logs(ip)
+
+    if len(logs) == 6:
+        if all(row["status"] == "failed" for row in logs):
+            block_ip(ip)
 
     insert_log(data)
-
 
 app = FastAPI()
 
@@ -153,7 +172,14 @@ def get_logs():
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
 
-    query = "SELECT ip, user, status, timestamp FROM ssh_logs ORDER BY id DESC LIMIT 100"
+    query = """
+        SELECT l.ip, l.user, l.status, l.timestamp, s.is_blocked
+        FROM ssh_logs l
+        LEFT JOIN ip_status s ON l.ip = s.ip
+        ORDER BY l.id DESC
+        LIMIT 100
+    """
+
     cursor.execute(query)
     rows = cursor.fetchall()
 
@@ -162,7 +188,44 @@ def get_logs():
 
     return {"count": len(rows), "data": rows}
 
+@app.post("/block/{ip}")
+def manual_block(ip: str):
+    block_ip(ip)
+    return {"message": f"IP {ip} diblokir secara manual"}
 
+
+@app.post("/unblock/{ip}")
+def manual_unblock(ip: str):
+    try:
+        subprocess.run(
+            ["sudo", "iptables", "-D", "INPUT", "-s", ip, "-j", "DROP"],
+            check=True
+        )
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE ip_status SET is_blocked = 0 WHERE ip = %s", (ip,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        notification(f"ip : {ip}\ncontent : Berhasil di-unblock")
+
+        return {"message": f"IP {ip} telah di-unblock"}
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/ip-status")
+def list_ip_status():
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM ip_status ORDER BY ip ASC")
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return rows
 
 @app.get("/stream")
 async def stream_logs(request: Request):

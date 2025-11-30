@@ -1,136 +1,130 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>SSH Login Monitor</title>
-    <style>
-        body { font-family: Arial; padding:20px; background:#f5f5f5; }
-        h1 { color:#333; }
-        table {
-            width:100%; border-collapse:collapse; background:white;
-            box-shadow:0 2px 5px rgba(0,0,0,0.1); margin-top:20px;
-        }
-        th { background:#333; color:white; padding:10px; }
-        td { padding:10px; border-bottom:1px solid #ddd; }
-        tr:hover { background:#f0f0f0; }
-        .success { color:green; }
-        .failed { color:red; }
-        button { padding:5px 10px; cursor:pointer; border:none; border-radius:4px; }
-        .block-btn { background:#d9534f; color:white; }
-        .unblock-btn { background:#5cb85c; color:white; }
-    </style>
+  <meta charset="utf-8" />
+  <title>SSH Monitor - Realtime</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#121212; color:#eee; padding:16px; }
+    table { width:100%; border-collapse:collapse; margin-bottom:16px; background:#1e1e1e; }
+    th, td { padding:8px; border:1px solid #333; text-align:center; }
+    th { background:#0b1220; }
+    .blocked { color:#ff6b6b; font-weight:bold; }
+    .open { color:#7bed9f; font-weight:bold; }
+    button { padding:6px 10px; border:none; border-radius:4px; cursor:pointer; }
+    .block { background:#c0392b; color:white; }
+    .unblock { background:#16a085; color:white; }
+    #status { margin-bottom:8px; }
+  </style>
 </head>
 <body>
 
-<h1>SSH Login Monitor (Realtime)</h1>
+<h1>SSH Monitor — Realtime</h1>
+<div id="status">Connecting...</div>
 
-<h2>IP Status (Blocked / Allowed)</h2>
+<h2>IP Status</h2>
 <table>
-    <thead>
-        <tr>
-            <th>IP</th>
-            <th>Status</th>
-            <th>Aksi</th>
-        </tr>
-    </thead>
-    <tbody id="ipTableBody"></tbody>
+  <thead><tr><th>IP</th><th>Status</th><th>Action</th></tr></thead>
+  <tbody id="ip-table"></tbody>
 </table>
 
-<h2>Realtime SSH Logs</h2>
+<h2>Recent Logs</h2>
 <table>
-    <thead>
-        <tr>
-            <th>IP Address</th>
-            <th>User</th>
-            <th>Status</th>
-            <th>Timestamp</th>
-        </tr>
-    </thead>
-    <tbody id="logTableBody"></tbody>
+  <thead><tr><th>IP</th><th>User</th><th>Status</th><th>Time</th></tr></thead>
+  <tbody id="logs-table"></tbody>
 </table>
 
 <script>
+const API = "http://10.20.150.243:8000"; 
+const ipTable = document.getElementById('ip-table');
+const logsTable = document.getElementById('logs-table');
+const statusDiv = document.getElementById('status');
 
-function renderLogRow(log) {
-    return `
-        <tr>
-            <td>${log.ip}</td>
-            <td>${log.user}</td>
-            <td class="${log.status}">${log.status}</td>
-            <td>${log.timestamp}</td>
-        </tr>
-    `;
+function createCell(text, cls = '') {
+  const td = document.createElement('td');
+  td.textContent = text;
+  if (cls) td.className = cls;
+  return td;
 }
 
-function renderIPRow(item) {
-    let status = item.is_blocked == 1 ? "BLOCKED" : "ALLOWED";
-    let color = item.is_blocked == 1 ? "red" : "green";
-
-    let button = item.is_blocked == 1
-        ? `<button class="unblock-btn" onclick="unblockIP('${item.ip}')">Unblock</button>`
-        : `<button class="block-btn" onclick="blockIP('${item.ip}')">Block</button>`;
-
-    return `
-        <tr>
-            <td>${item.ip}</td>
-            <td style="color:${color};font-weight:bold">${status}</td>
-            <td>${button}</td>
-        </tr>
-    `;
+function addLogRow(log) {
+  const tr = document.createElement('tr');
+  tr.appendChild(createCell(log.ip));
+  tr.appendChild(createCell(log.user));
+  tr.appendChild(createCell(log.status, log.status === 'failed' ? 'blocked' : 'open'));
+  tr.appendChild(createCell(log.timestamp));
+  // tr.appendChild(createCell(log.is_blocked ? 'YES' : 'NO'));
+  logsTable.prepend(tr);
+  // limit rows
+  while (logsTable.children.length > 200) logsTable.removeChild(logsTable.lastChild);
 }
 
-async function loadInitialLogs() {
-    const res = await fetch("http://127.0.0.1:8000/logs");
-    const json = await res.json();
-
-    const tbody = document.getElementById("logTableBody");
-    tbody.innerHTML = "";
-
-    json.data.forEach(log => {
-        tbody.innerHTML += renderLogRow(log);
-    });
+function updateIpTable(rows) {
+  ipTable.innerHTML = '';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.appendChild(createCell(r.ip));
+    tr.appendChild(createCell(r.is_blocked ? 'BLOCKED' : 'OPEN', r.is_blocked ? 'blocked' : 'open'));
+    const actionTd = document.createElement('td');
+    const btn = document.createElement('button');
+    if (r.is_blocked) {
+      btn.textContent = 'UNBLOCK';
+      btn.className = 'unblock';
+      btn.onclick = () => optimisticUnblock(r.ip);
+    } else {
+      btn.textContent = 'BLOCK';
+      btn.className = 'block';
+      btn.onclick = () => optimisticBlock(r.ip);
+    }
+    actionTd.appendChild(btn);
+    tr.appendChild(actionTd);
+    ipTable.appendChild(tr);
+  });
 }
 
-async function loadIPStatus() {
-    const res = await fetch("http://127.0.0.1:8000/ip-status");
-    const data = await res.json();
-
-    const tbody = document.getElementById("ipTableBody");
-    tbody.innerHTML = "";
-
-    data.forEach(item => {
-        tbody.innerHTML += renderIPRow(item);
-    });
+function optimisticBlock(ip) {
+  const rows = [...ipTable.children];
+  rows.forEach(tr => {
+    if (tr.children[0].innerText === ip) {
+      tr.children[1].innerText = 'BLOCKED';
+      tr.children[1].className = 'blocked';
+      tr.children[2].innerHTML = '<button class="unblock" onclick="optimisticUnblock(\''+ip+'\')">UNBLOCK</button>';
+    }
+  });
+  fetch(`${API}/block/${ip}`, { method: 'POST' }).catch(e => console.error(e));
 }
 
-async function blockIP(ip) {
-    await fetch(`http://127.0.0.1:8000/block/${ip}`, { method: "POST" });
-    loadIPStatus();
+function optimisticUnblock(ip) {
+  const rows = [...ipTable.children];
+  rows.forEach(tr => {
+    if (tr.children[0].innerText === ip) {
+      tr.children[1].innerText = 'OPEN';
+      tr.children[1].className = 'open';
+      tr.children[2].innerHTML = '<button class="block" onclick="optimisticBlock(\''+ip+'\')">BLOCK</button>';
+    }
+  });
+  fetch(`${API}/unblock/${ip}`, { method: 'POST' }).catch(e => console.error(e));
 }
 
-async function unblockIP(ip) {
-    await fetch(`http://127.0.0.1:8000/unblock/${ip}`, { method: "POST" });
-    loadIPStatus();
-}
+fetch(`${API}/ip-status`).then(r => r.json()).then(updateIpTable).catch(e => console.error(e));
+fetch(`${API}/logs`).then(r => r.json()).then(d => { d.data.reverse().forEach(addLogRow); }).catch(e => console.error(e));
 
-function startEventStream() {
-
-    const evtSource = new EventSource("http://127.0.0.1:8000/stream");
-
-    evtSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        const tbody = document.getElementById("logTableBody");
-        tbody.innerHTML = renderLogRow(data) + tbody.innerHTML;
-
-        loadIPStatus(); 
-    };
-}
-
-loadInitialLogs();
-loadIPStatus();
-startEventStream();
-
+const es = new EventSource(`${API}/stream`);
+es.onopen = () => { statusDiv.innerText = 'Connected (SSE)'; };
+es.onerror = () => { statusDiv.innerText = 'Disconnected — trying to reconnect...'; };
+es.onmessage = (ev) => {
+  try {
+    const payload = JSON.parse(ev.data);
+    if (payload.type === 'log') {
+      addLogRow(payload.data);
+    } else if (payload.type === 'ip_status') {
+      updateIpTable(payload.data);
+    } else if (payload.type === 'system') {
+      console.log('SYSTEM:', payload.data.message);
+    }
+  } catch (err) {
+    console.error('parse sse', err);
+  }
+};
 </script>
 
 </body>

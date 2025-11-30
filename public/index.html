@@ -2,48 +2,232 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SSH Monitor - Realtime</title>
   <style>
-    body { font-family: Arial, sans-serif; background:#121212; color:#eee; padding:16px; }
-    table { width:100%; border-collapse:collapse; margin-bottom:16px; background:#1e1e1e; }
-    th, td { padding:8px; border:1px solid #333; text-align:center; }
-    th { background:#0b1220; }
-    .blocked { color:#ff6b6b; font-weight:bold; }
-    .open { color:#7bed9f; font-weight:bold; }
-    button { padding:6px 10px; border:none; border-radius:4px; cursor:pointer; }
-    .block { background:#c0392b; color:white; }
-    .unblock { background:#16a085; color:white; }
-    #status { margin-bottom:8px; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+      color: #e0e0e0;
+      padding: 24px;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 { 
+      font-size: 28px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    #status { 
+      display: inline-block;
+      padding: 6px 14px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 20px;
+      font-size: 13px;
+      margin-bottom: 32px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    h2 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      margin-top: 40px;
+      color: #f0f0f0;
+    }
+
+    table { 
+      width: 100%;
+      border-collapse: collapse;
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    th, td { 
+      padding: 16px;
+      text-align: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    th { 
+      background: rgba(255, 255, 255, 0.03);
+      font-weight: 600;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #a0a0a0;
+    }
+
+    tbody tr {
+      transition: background 0.2s ease;
+    }
+
+    tbody tr:hover {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .blocked { 
+      color: #ff6b6b;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    .open { 
+      color: #51cf66;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    button { 
+      padding: 8px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 13px;
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .block { 
+      background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+      color: white;
+    }
+
+    .unblock { 
+      background: linear-gradient(135deg, #51cf66 0%, #37b24d 100%);
+      color: white;
+    }
+
+    .pagination {
+      text-align: center;
+      margin-top: 24px;
+      margin-bottom: 16px;
+    }
+
+    .pagination button {
+      margin: 0 4px;
+      padding: 8px 14px;
+      background: rgba(255, 255, 255, 0.05);
+      color: #e0e0e0;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 13px;
+      min-width: 40px;
+    }
+
+    .pagination button:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .pagination button.active {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-color: transparent;
+      font-weight: 600;
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 16px;
+      }
+
+      h1 {
+        font-size: 24px;
+      }
+
+      th, td {
+        padding: 12px 8px;
+        font-size: 13px;
+      }
+
+      button {
+        padding: 6px 12px;
+        font-size: 11px;
+      }
+    }
   </style>
 </head>
 <body>
 
-<h1>SSH Monitor — Realtime</h1>
-<div id="status">Connecting...</div>
+<div class="container">
+  <h1>🔐 SSH Monitor — Realtime</h1>
+  <div id="status">Connecting...</div>
 
-<h2>IP Status</h2>
-<table>
-  <thead><tr><th>IP</th><th>Status</th><th>Action</th></tr></thead>
-  <tbody id="ip-table"></tbody>
-</table>
+  <h2>IP Status</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>IP Address</th>
+        <th>Status</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="ip-table"></tbody>
+  </table>
+  <div id="ip-pagination" class="pagination"></div>
 
-<h2>Recent Logs</h2>
-<table>
-  <thead><tr><th>IP</th><th>User</th><th>Status</th><th>Time</th></tr></thead>
-  <tbody id="logs-table"></tbody>
-</table>
+  <h2>Recent Logs</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>IP Address</th>
+        <th>User</th>
+        <th>Status</th>
+        <th>Time</th>
+      </tr>
+    </thead>
+    <tbody id="logs-table"></tbody>
+  </table>
+  <div id="logs-pagination" class="pagination"></div>
+</div>
 
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <script>
   window.OneSignalDeferred = window.OneSignalDeferred || [];
   OneSignalDeferred.push(async function (OneSignal) {
     await OneSignal.init({
-        appId: "1cf92b1f-e920-43b2-b3d5-c3845a748ad3",
+      appId: "1cf92b1f-e920-43b2-b3d5-c3845a748ad3",
     });
 
     const permission = await OneSignal.Notifications.requestPermission();
-
-    await OneSignal.login("user123"); 
+    await OneSignal.login("user123");
 
     const pushId = await OneSignal.User.PushSubscription.id;
     console.log("Player ID:", pushId);
@@ -51,10 +235,23 @@
 </script>
 
 <script>
-const API = "http://10.20.150.243:8000"; 
+const API = "http://10.20.150.243:8000";
+
 const ipTable = document.getElementById('ip-table');
 const logsTable = document.getElementById('logs-table');
 const statusDiv = document.getElementById('status');
+
+const ipPaginationDiv = document.getElementById('ip-pagination');
+const logsPaginationDiv = document.getElementById('logs-pagination');
+
+let allIps = [];
+let allLogs = [];
+
+let ipPage = 1;
+let logPage = 1;
+
+const ipPerPage = 10;
+const logPerPage = 15;
 
 function createCell(text, cls = '') {
   const td = document.createElement('td');
@@ -63,26 +260,57 @@ function createCell(text, cls = '') {
   return td;
 }
 
+function getPagedData(data, page, perPage) {
+  const start = (page - 1) * perPage;
+  return data.slice(start, start + perPage);
+}
+
+function renderPagination(container, totalItems, perPage, activePage, onPageChange) {
+  const totalPages = Math.ceil(totalItems / perPage);
+  container.innerHTML = '';
+
+  if (totalPages <= 1) return;
+
+  for (let i = 1; i <= totalPages; i++) {
+    const btn = document.createElement('button');
+    btn.innerText = i;
+
+    if (i === activePage) btn.classList.add('active');
+
+    btn.onclick = () => onPageChange(i);
+    container.appendChild(btn);
+  }
+}
+
 function addLogRow(log) {
   const tr = document.createElement('tr');
+
   tr.appendChild(createCell(log.ip));
   tr.appendChild(createCell(log.user));
-  tr.appendChild(createCell(log.status, log.status === 'failed' ? 'blocked' : 'open'));
+  tr.appendChild(createCell(
+    log.status, 
+    log.status === 'failed' ? 'blocked' : 'open'
+  ));
   tr.appendChild(createCell(log.timestamp));
-  // tr.appendChild(createCell(log.is_blocked ? 'YES' : 'NO'));
-  logsTable.prepend(tr);
-  // limit rows
-  while (logsTable.children.length > 200) logsTable.removeChild(logsTable.lastChild);
+
+  logsTable.appendChild(tr);
 }
 
 function updateIpTable(rows) {
   ipTable.innerHTML = '';
+
   rows.forEach(r => {
     const tr = document.createElement('tr');
+
     tr.appendChild(createCell(r.ip));
-    tr.appendChild(createCell(r.is_blocked ? 'BLOCKED' : 'OPEN', r.is_blocked ? 'blocked' : 'open'));
+    tr.appendChild(createCell(
+      r.is_blocked ? 'BLOCKED' : 'OPEN', 
+      r.is_blocked ? 'blocked' : 'open'
+    ));
+
     const actionTd = document.createElement('td');
     const btn = document.createElement('button');
+
     if (r.is_blocked) {
       btn.textContent = 'UNBLOCK';
       btn.className = 'unblock';
@@ -92,54 +320,111 @@ function updateIpTable(rows) {
       btn.className = 'block';
       btn.onclick = () => optimisticBlock(r.ip);
     }
+
     actionTd.appendChild(btn);
     tr.appendChild(actionTd);
+
     ipTable.appendChild(tr);
+  });
+}
+
+function updateIpTableWithPagination(rows) {
+  allIps = rows;
+
+  const pagedData = getPagedData(allIps, ipPage, ipPerPage);
+  updateIpTable(pagedData);
+
+  renderPagination(ipPaginationDiv, allIps.length, ipPerPage, ipPage, (page) => {
+    ipPage = page;
+    updateIpTableWithPagination(allIps);
+  });
+}
+
+function updateLogsWithPagination() {
+  logsTable.innerHTML = '';
+
+  const pagedLogs = getPagedData(allLogs, logPage, logPerPage);
+  pagedLogs.forEach(addLogRow);
+
+  renderPagination(logsPaginationDiv, allLogs.length, logPerPage, logPage, (page) => {
+    logPage = page;
+    updateLogsWithPagination();
   });
 }
 
 function optimisticBlock(ip) {
   const rows = [...ipTable.children];
+
   rows.forEach(tr => {
     if (tr.children[0].innerText === ip) {
       tr.children[1].innerText = 'BLOCKED';
       tr.children[1].className = 'blocked';
-      tr.children[2].innerHTML = '<button class="unblock" onclick="optimisticUnblock(\''+ip+'\')">UNBLOCK</button>';
+      tr.children[2].innerHTML =
+        `<button class="unblock" onclick="optimisticUnblock('${ip}')">UNBLOCK</button>`;
     }
   });
+
   fetch(`${API}/block/${ip}`, { method: 'POST' }).catch(e => console.error(e));
 }
 
 function optimisticUnblock(ip) {
   const rows = [...ipTable.children];
+
   rows.forEach(tr => {
     if (tr.children[0].innerText === ip) {
       tr.children[1].innerText = 'OPEN';
       tr.children[1].className = 'open';
-      tr.children[2].innerHTML = '<button class="block" onclick="optimisticBlock(\''+ip+'\')">BLOCK</button>';
+      tr.children[2].innerHTML =
+        `<button class="block" onclick="optimisticBlock('${ip}')">BLOCK</button>`;
     }
   });
+
   fetch(`${API}/unblock/${ip}`, { method: 'POST' }).catch(e => console.error(e));
 }
 
-fetch(`${API}/ip-status`).then(r => r.json()).then(updateIpTable).catch(e => console.error(e));
-fetch(`${API}/logs`).then(r => r.json()).then(d => { d.data.reverse().forEach(addLogRow); }).catch(e => console.error(e));
+fetch(`${API}/ip-status`)
+  .then(r => r.json())
+  .then(updateIpTableWithPagination)
+  .catch(e => console.error(e));
+
+fetch(`${API}/logs`)
+  .then(r => r.json())
+  .then(d => {
+    allLogs = d.data.reverse();
+    updateLogsWithPagination();
+  })
+  .catch(e => console.error(e));
 
 const es = new EventSource(`${API}/stream`);
-es.onopen = () => { statusDiv.innerText = 'Connected (SSE)'; };
-es.onerror = () => { statusDiv.innerText = 'Disconnected — trying to reconnect...'; };
+
+es.onopen = () => {
+  statusDiv.innerText = 'Connected (SSE)';
+};
+
+es.onerror = () => {
+  statusDiv.innerText = 'Disconnected — reconnecting...';
+};
+
 es.onmessage = (ev) => {
   try {
     const payload = JSON.parse(ev.data);
+
     if (payload.type === 'log') {
-      addLogRow(payload.data);
-    } else if (payload.type === 'ip_status') {
-      updateIpTable(payload.data);
-    } else if (payload.type === 'system') {
+      allLogs.unshift(payload.data);
+      updateLogsWithPagination();
+    }
+
+    else if (payload.type === 'ip_status') {
+      allIps = payload.data;
+      updateIpTableWithPagination(allIps);
+    }
+
+    else if (payload.type === 'system') {
       console.log('SYSTEM:', payload.data.message);
     }
+
   } catch (err) {
-    console.error('parse sse', err);
+    console.error('SSE parse error:', err);
   }
 };
 </script>

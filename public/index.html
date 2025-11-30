@@ -33,6 +33,23 @@
   <tbody id="logs-table"></tbody>
 </table>
 
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(async function (OneSignal) {
+    await OneSignal.init({
+        appId: "1cf92b1f-e920-43b2-b3d5-c3845a748ad3",
+    });
+
+    const permission = await OneSignal.Notifications.requestPermission();
+
+    await OneSignal.login("user123"); 
+
+    const pushId = await OneSignal.User.PushSubscription.id;
+    console.log("Player ID:", pushId);
+  });
+</script>
+
 <script>
 const API = "http://10.20.150.243:8000"; 
 const ipTable = document.getElementById('ip-table');

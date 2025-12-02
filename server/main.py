@@ -20,39 +20,62 @@ load_dotenv()
 ONE_SIGNAL_API_KEY = os.getenv("ONE_SIGNAL_API_KEY")
 ONE_SIGNAL_APP_ID = os.getenv("ONE_SIGNAL_APP_ID")
 
+def normalize_ip(ip: str) -> str:
+    if not isinstance(ip, str):
+        ip = str(ip)
+    ip = ip.strip()
+    if ip.startswith("::ffff:"):
+        ip = ip.replace("::ffff:", "")
+    return ip
+
 def get_connection():
     return mysql.connector.connect(
         host=os.getenv("DB_HOST", "localhost"),
         user=os.getenv("DB_USER", "root"),
         password=os.getenv("DB_PASS", "cy6er"),
         database=os.getenv("DB_NAME", "cy6er"),
+        autocommit=True
     )
 
 def _set_ip_status_db_blocking(ip: str) -> bool:
+    """
+    Insert IP if belum ada. Return True jika benar-benar baru.
+    Menggunakan INSERT IGNORE + rowcount untuk menghindari race condition.
+    """
+    ip = normalize_ip(ip)
     conn = get_connection()
     cursor = conn.cursor()
     is_new = False
     try:
-        cursor.execute("SELECT ip FROM ip_status WHERE ip = %s", (ip,))
-        if not cursor.fetchone():
-            cursor.execute(
-                "INSERT INTO ip_status (ip, is_blocked) VALUES (%s, 0)",
-                (ip,)
-            )
-            conn.commit()
+        cursor.execute(
+            "INSERT IGNORE INTO ip_status (ip, is_blocked) VALUES (%s, 0)",
+            (ip,)
+        )
+
+        if cursor.rowcount == 1:
             is_new = True
+
+        try:
+            conn.commit()
+        except Exception:
+            pass
+    except Exception as e:
+        print("[ERROR] _set_ip_status_db_blocking:", e)
     finally:
         cursor.close()
         conn.close()
     return is_new
 
 async def set_ip_status_db(ip: str):
-    is_new = await asyncio.to_thread(_set_ip_status_db_blocking, ip)
-    
-    if is_new:
-        await send_notification(f"IP baru terdeteksi:\n{ip}")
+    try:
+        is_new = await asyncio.to_thread(_set_ip_status_db_blocking, ip)
+        if is_new:
+            await send_notification(f"IP baru terdeteksi:\n{normalize_ip(ip)}")
+    except Exception as e:
+        print("[ERROR] set_ip_status_db:", e)
 
 def _update_block_status_db_blocking(ip: str, blocked: int):
+    ip = normalize_ip(ip)
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -66,27 +89,33 @@ async def update_block_status_db(ip: str, blocked: int):
     await asyncio.to_thread(_update_block_status_db_blocking, ip, blocked)
 
 def _insert_log_db_blocking(data: Dict):
+    """
+    Hanya memasukkan record ke ssh_logs.
+    Jangan lagi meng-insert ke ip_status di sini (agar set_ip_status_db menjadi sumber kebenaran).
+    """
+    ip = normalize_ip(data.get("ip", ""))
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute(
-            "INSERT IGNORE INTO ip_status (ip, is_blocked) VALUES (%s, 0)",
-            (data["ip"],)
-        )
-
         query = """
             INSERT INTO ssh_logs (ip, user, status, timestamp)
             VALUES (%s, %s, %s, %s)
         """
-
         cursor.execute(query, (
-            data["ip"],
-            data["user"],
-            data["status"],
-            data["timestamp"]
+            ip,
+            data.get("user"),
+            data.get("status"),
+            data.get("timestamp")
         ))
-
         conn.commit()
+    except Exception as e:
+        # jika gagal insert log, tampilkan error tetapi jangan crash server
+        print("[ERROR] _insert_log_db_blocking:", e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         cursor.close()
         conn.close()
@@ -95,6 +124,7 @@ async def insert_log_db(data: Dict):
     await asyncio.to_thread(_insert_log_db_blocking, data)
 
 def _get_last_n_statuses_blocking(ip: str, n: int = 6):
+    ip = normalize_ip(ip)
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
     try:
@@ -165,6 +195,7 @@ async def send_notification(message: str):
     await asyncio.to_thread(_send_notification_blocking, message)
 
 def _is_ip_blocked_iptables_blocking(ip: str) -> bool:
+    ip = normalize_ip(ip)
     try:
         subprocess.run(["sudo", "iptables", "-C", "INPUT", "-s", ip, "-j", "DROP"],
                        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -173,10 +204,12 @@ def _is_ip_blocked_iptables_blocking(ip: str) -> bool:
         return False
 
 def _block_ip_iptables_blocking(ip: str) -> None:
+    ip = normalize_ip(ip)
     if not _is_ip_blocked_iptables_blocking(ip):
         subprocess.run(["sudo", "iptables", "-A", "INPUT", "-s", ip, "-j", "DROP"], check=True)
 
 def _unblock_ip_iptables_blocking(ip: str) -> None:
+    ip = normalize_ip(ip)
     while True:
         try:
             subprocess.run(["sudo", "iptables", "-D", "INPUT", "-s", ip, "-j", "DROP"], check=True,
@@ -244,18 +277,24 @@ def home():
 @app.post("/logs")
 async def receive_logs(log: SSHLog):
     log_dict = log.dict()
-    await insert_log_db(log_dict)
-    await set_ip_status_db(log.ip)
+    log_dict["ip"] = normalize_ip(log_dict.get("ip", ""))
 
-    statuses = await get_last_n_statuses(log.ip, 6)
-    if len(statuses) == 6 and all(r["status"] == "failed" for r in statuses):
-        asyncio.create_task(async_block_ip_workflow(log.ip))
+    try:
+        await set_ip_status_db(log_dict["ip"])
+        await insert_log_db(log_dict)
+        statuses = await get_last_n_statuses(log_dict["ip"], 6)
+        if len(statuses) == 6 and all(r["status"] == "failed" for r in statuses):
+            asyncio.create_task(async_block_ip_workflow(log_dict["ip"]))
 
-    await push_event("log", log_dict)
-    ip_rows = await get_all_ip_status()
-    await push_event("ip_status", ip_rows)
-    print("Log diterima:", log_dict)
-    return {"message": "received", "data": log_dict}
+        await push_event("log", log_dict)
+        ip_rows = await get_all_ip_status()
+        await push_event("ip_status", ip_rows)
+
+        print("Log diterima:", log_dict)
+        return {"message": "received", "data": log_dict}
+    except Exception as e:
+        print("[ERROR] receive_logs:", e)
+        return JSONResponse({"message": "error", "detail": str(e)}, status_code=500)
 
 @app.get("/logs")
 async def get_logs():
@@ -264,11 +303,13 @@ async def get_logs():
 
 @app.post("/block/{ip}")
 async def manual_block(ip: str):
+    ip = normalize_ip(ip)
     asyncio.create_task(async_block_ip_workflow(ip))
     return JSONResponse({"message": f"IP {ip} blocking scheduled"}, status_code=202)
 
 @app.post("/unblock/{ip}")
 async def manual_unblock(ip: str):
+    ip = normalize_ip(ip)
     asyncio.create_task(async_unblock_ip_workflow(ip))
     return JSONResponse({"message": f"IP {ip} unblock scheduled"}, status_code=202)
 
@@ -282,12 +323,15 @@ async def stream_logs(request: Request):
     """
     Each client gets its own asyncio.Queue. push_event broadcasts to all client queues.
     """
-    client_q: asyncio.Queue = asyncio.Queue(maxsize=100)  
+    client_q: asyncio.Queue = asyncio.Queue(maxsize=100)
     clients.append(client_q)
 
     try:
         ip_rows = await get_all_ip_status()
-        client_q.put_nowait({"type": "ip_status", "data": ip_rows})
+        try:
+            client_q.put_nowait({"type": "ip_status", "data": ip_rows})
+        except asyncio.QueueFull:
+            print("client queue full on initial push")
     except Exception:
         pass
 

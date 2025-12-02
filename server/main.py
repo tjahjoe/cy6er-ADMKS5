@@ -69,8 +69,23 @@ def _insert_log_db_blocking(data: Dict):
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        query = "INSERT INTO ssh_logs (ip, user, status, timestamp) VALUES (%s, %s, %s, %s)"
-        cursor.execute(query, (data["ip"], data["user"], data["status"], data["timestamp"]))
+        cursor.execute(
+            "INSERT IGNORE INTO ip_status (ip, is_blocked) VALUES (%s, 0)",
+            (data["ip"],)
+        )
+
+        query = """
+            INSERT INTO ssh_logs (ip, user, status, timestamp)
+            VALUES (%s, %s, %s, %s)
+        """
+
+        cursor.execute(query, (
+            data["ip"],
+            data["user"],
+            data["status"],
+            data["timestamp"]
+        ))
+
         conn.commit()
     finally:
         cursor.close()

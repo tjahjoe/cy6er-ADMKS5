@@ -28,20 +28,29 @@ def get_connection():
         database=os.getenv("DB_NAME", "cy6er"),
     )
 
-def _set_ip_status_db_blocking(ip: str):
+def _set_ip_status_db_blocking(ip: str) -> bool:
     conn = get_connection()
     cursor = conn.cursor()
+    is_new = False
     try:
         cursor.execute("SELECT ip FROM ip_status WHERE ip = %s", (ip,))
         if not cursor.fetchone():
-            cursor.execute("INSERT INTO ip_status (ip, is_blocked) VALUES (%s, 0)", (ip,))
+            cursor.execute(
+                "INSERT INTO ip_status (ip, is_blocked) VALUES (%s, 0)",
+                (ip,)
+            )
             conn.commit()
+            is_new = True
     finally:
         cursor.close()
         conn.close()
+    return is_new
 
 async def set_ip_status_db(ip: str):
-    await asyncio.to_thread(_set_ip_status_db_blocking, ip)
+    is_new = await asyncio.to_thread(_set_ip_status_db_blocking, ip)
+    
+    if is_new:
+        await send_notification(f"IP baru terdeteksi:\n{ip}")
 
 def _update_block_status_db_blocking(ip: str, blocked: int):
     conn = get_connection()
@@ -228,6 +237,8 @@ async def receive_logs(log: SSHLog):
         asyncio.create_task(async_block_ip_workflow(log.ip))
 
     await push_event("log", log_dict)
+    ip_rows = await get_all_ip_status()
+    await push_event("ip_status", ip_rows)
     print("Log diterima:", log_dict)
     return {"message": "received", "data": log_dict}
 

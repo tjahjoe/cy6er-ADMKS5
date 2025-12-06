@@ -229,8 +229,30 @@ def _get_recent_logs_blocking(limit=100):
         cursor.close()
         conn.close()
 
+def _get_wazuh_recent_logs_blocking(limit=100):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        query = """
+            SELECT w.id, w.rule_id, w.rule_desc, w.severity, w.target,
+                   w.agent_ip, w.attacker_ip, w.log_raw, w.timestamp, w.monitor,
+                   IFNULL(i.is_blocked, 0) AS is_blocked
+            FROM wazuh_logs w
+            LEFT JOIN ip_status i ON w.attacker_ip = i.ip
+            ORDER BY w.id DESC
+            LIMIT %s
+        """
+        cursor.execute(query, (limit,))
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
+
 async def get_recent_logs(limit=100):
     return await asyncio.to_thread(_get_recent_logs_blocking, limit)
+
+async def get_wazuh_recent_logs(limit=100):
+    return await asyncio.to_thread(_get_wazuh_recent_logs_blocking, limit)
 
 def _send_notification_blocking(message: str):
     if not ONE_SIGNAL_API_KEY or not ONE_SIGNAL_APP_ID:
@@ -452,6 +474,8 @@ async def receive_wazuh_webhook(request: Request):
         if attacker_ip not in ["N/A", None, ""]:
             await set_ip_status_db(attacker_ip)
 
+        await push_event("wazuh_alert", clean_alert)
+
         return JSONResponse(status_code=200, content={"status": "success", "alert": clean_alert})
 
     except Exception as e:
@@ -459,22 +483,8 @@ async def receive_wazuh_webhook(request: Request):
 
 @app.get("/wazuh/logs")
 def api_logs(limit: int = 100):
-    conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
-    query = """
-        SELECT w.id, w.rule_id, w.rule_desc, w.severity, w.target,
-               w.agent_ip, w.attacker_ip, w.log_raw, w.timestamp, w.monitor,
-               IFNULL(i.is_blocked, 0) AS is_blocked
-        FROM wazuh_logs w
-        LEFT JOIN ip_status i ON w.attacker_ip = i.ip
-        ORDER BY w.id DESC
-        LIMIT %s
-    """
-    cursor.execute(query, (limit,))
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return {"total": len(rows), "data": rows}
+    rows = asyncio.run(get_wazuh_recent_logs(limit=limit))
+    return {"count": len(rows), "data": rows}
 
 @app.get("/stream")
 async def stream_logs(request: Request):

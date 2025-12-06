@@ -186,101 +186,125 @@ button:active {
 </head>
 <body>
 <div class="container">
-  <h1>Wazuh Dashboard</h1>
-  <div id="status">Connected</div>
-    <div style="margin: 12px 0;">
-    <button onclick="window.location.href='/index.html'" 
-            style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color:white;">
-      Go to Main Dashboard
-    </button>
-  </div>
-  <h2>Latest Logs</h2>
-  <table id="logTable">
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Rule ID</th>
-        <th>Description</th>
-        <th>Severity</th>
-        <th>Target</th>
-        <th>Agent IP</th>
-        <th>Attacker IP</th>
-        <th>Timestamp</th>
-        <th>Monitor</th>
-        <th>Status</th>
-      </tr>
-    </thead>
-    <tbody>
-    </tbody>
-  </table>
-  <div class="pagination" id="pagination"></div>
+<h1>Wazuh Dashboard</h1>
+<div id="status">Connecting...</div>
+<div style="margin:12px 0;">
+<button onclick="window.location.href='/index.html'" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color:white;">Go to Main Dashboard</button>
 </div>
+
+<h2>Latest Logs</h2>
+<table id="logTable">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Rule ID</th>
+      <th>Description</th>
+      <th>Severity</th>
+      <th>Target</th>
+      <th>Agent IP</th>
+      <th>Attacker IP</th>
+      <th>Timestamp</th>
+      <th>Monitor</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+<div class="pagination" id="pagination"></div>
+</div>
+
 <script>
-const API_URL = "http://192.168.1.5:8000/wazuh/logs";
+const API = "http://192.168.1.5:8000";
+const logTable = document.getElementById('logTable').querySelector('tbody');
+const statusDiv = document.getElementById('status');
+const paginationDiv = document.getElementById('pagination');
+
+let allLogs = [];
 let currentPage = 1;
 const logsPerPage = 10;
-let allLogs = [];
 
-function createCell(text, cls = '') {
+function createCell(text, cls='') {
   const td = document.createElement('td');
   td.textContent = text ?? '-';
-  if (cls) td.className = cls;
+  if(cls) td.className = cls;
   return td;
 }
 
-function getPagedData(data, page, perPage) {
-  const start = (page - 1) * perPage;
-  return data.slice(start, start + perPage);
+function getPagedData(data,page,perPage){
+  const start = (page-1)*perPage;
+  return data.slice(start,start+perPage);
 }
 
-function renderPagination(container, totalItems, perPage, activePage, onPageChange) {
-  const totalPages = Math.ceil(totalItems / perPage);
-  container.innerHTML = '';
-  if (totalPages <= 1) return;
-
-  for (let i = 1; i <= totalPages; i++) {
-    const btn = document.createElement('button');
-    btn.textContent = i;
-    btn.classList.toggle('active', i === activePage);
-    btn.onclick = () => onPageChange(i);
+function renderPagination(container,totalItems,perPage,activePage,onPageChange){
+  const totalPages = Math.ceil(totalItems/perPage);
+  container.innerHTML='';
+  if(totalPages<=1) return;
+  for(let i=1;i<=totalPages;i++){
+    const btn=document.createElement('button');
+    btn.textContent=i;
+    if(i===activePage) btn.classList.add('active');
+    btn.onclick=()=>onPageChange(i);
     container.appendChild(btn);
   }
 }
 
-function renderLogs() {
-  const tbody = document.querySelector("#logTable tbody");
-  tbody.innerHTML = '';
-  const pagedLogs = getPagedData(allLogs, currentPage, logsPerPage);
+function addLogRow(log){
+  const tr=document.createElement('tr');
+  tr.className='wazuh-alert';
+  tr.appendChild(createCell(log.id ?? '-'));
+  tr.appendChild(createCell(log.rule_id ?? '-'));
+  tr.appendChild(createCell(log.rule_desc ?? '-'));
+  tr.appendChild(createCell(log.severity ?? '-'));
+  tr.appendChild(createCell(log.target ?? '-'));
+  tr.appendChild(createCell(log.agent_ip ?? '-'));
+  tr.appendChild(createCell(log.attacker_ip ?? '-'));
+  tr.appendChild(createCell(log.timestamp ?? '-'));
+  tr.appendChild(createCell(log.monitor ?? '-'));
+  const statusCls = log.is_blocked ? 'blocked' : 'open';
+  tr.appendChild(createCell(log.is_blocked ? 'BLOCKED':'OPEN', statusCls));
+  logTable.appendChild(tr);
+}
 
-  pagedLogs.forEach(log => {
-    const tr = document.createElement('tr');
-    tr.appendChild(createCell(log.id));
-    tr.appendChild(createCell(log.rule_id));
-    tr.appendChild(createCell(log.rule_desc));
-    tr.appendChild(createCell(log.severity));
-    tr.appendChild(createCell(log.target));
-    tr.appendChild(createCell(log.agent_ip));
-    tr.appendChild(createCell(log.attacker_ip));
-    tr.appendChild(createCell(log.timestamp));
-    tr.appendChild(createCell(log.monitor));
-    tr.appendChild(createCell(log.is_blocked ? 'BLOCKED' : 'OPEN', log.is_blocked ? 'blocked' : 'open'));
-    tbody.appendChild(tr);
-  });
-
-  renderPagination(document.getElementById("pagination"), allLogs.length, logsPerPage, currentPage, (page) => {
-    currentPage = page;
+function renderLogs(){
+  logTable.innerHTML='';
+  const pagedLogs = getPagedData(allLogs,currentPage,logsPerPage);
+  pagedLogs.forEach(addLogRow);
+  renderPagination(paginationDiv,allLogs.length,logsPerPage,currentPage,(page)=>{
+    currentPage=page;
     renderLogs();
   });
 }
 
-async function fetchLogs() {
-  const response = await fetch(`${API_URL}`);
-  const data = await response.json();
-  allLogs = data.data; // Hapus reverse()
-  renderLogs();
-}
+fetch(`${API}/wazuh/logs?limit=100`)
+  .then(r=>r.json())
+  .then(d=>{
+    allLogs = d.data;
+    renderLogs();
+  });
 
-fetchLogs();
+const es = new EventSource(`${API}/stream`);
+es.onopen = ()=> statusDiv.textContent='Connected (SSE)';
+es.onerror = ()=> statusDiv.textContent='Disconnected — reconnecting...';
+es.onmessage=(ev)=>{
+  try{
+    const payload=JSON.parse(ev.data);
+    if(payload.type==='wazuh_alert'){
+      allLogs.unshift({
+        id: payload.data.id,
+        rule_id: payload.data.rule_id,
+        rule_desc: payload.data.rule_desc,
+        severity: payload.data.severity,
+        target: payload.data.target,
+        agent_ip: payload.data.agent_ip,
+        attacker_ip: payload.data.attacker_ip,
+        timestamp: payload.data.timestamp,
+        monitor: payload.data.monitor,
+        is_blocked: payload.data.is_blocked ?? 0
+      });
+      renderLogs();
+    }
+  }catch(e){ console.error('SSE parse error',e);}
+};
 </script>
 </body>
 </html>

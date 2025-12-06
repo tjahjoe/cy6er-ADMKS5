@@ -215,55 +215,69 @@ button:active {
   </table>
   <div class="pagination" id="pagination"></div>
 </div>
-
 <script>
-const API_URL = "http://127.0.0.1:8000/api/logs";
+const API_URL = "http://192.168.1.5:8000/wazuh/logs";
 let currentPage = 1;
-const limit = 20;
-let totalPages = 1;
+const logsPerPage = 10;
+let allLogs = [];
 
-async function fetchLogs(page = 1) {
-  const response = await fetch(`${API_URL}?limit=${limit}`);
-  const data = await response.json();
-  const logs = data.data;
+function createCell(text, cls = '') {
+  const td = document.createElement('td');
+  td.textContent = text ?? '-';
+  if (cls) td.className = cls;
+  return td;
+}
+
+function getPagedData(data, page, perPage) {
+  const start = (page - 1) * perPage;
+  return data.slice(start, start + perPage);
+}
+
+function renderPagination(container, totalItems, perPage, activePage, onPageChange) {
+  const totalPages = Math.ceil(totalItems / perPage);
+  container.innerHTML = '';
+  if (totalPages <= 1) return;
+
+  for (let i = 1; i <= totalPages; i++) {
+    const btn = document.createElement('button');
+    btn.textContent = i;
+    btn.classList.toggle('active', i === activePage);
+    btn.onclick = () => onPageChange(i);
+    container.appendChild(btn);
+  }
+}
+
+function renderLogs() {
   const tbody = document.querySelector("#logTable tbody");
-  tbody.innerHTML = "";
-  totalPages = Math.ceil(data.total / limit);
+  tbody.innerHTML = '';
+  const pagedLogs = getPagedData(allLogs, currentPage, logsPerPage);
 
-  logs.forEach(log => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${log.id}</td>
-      <td>${log.rule_id}</td>
-      <td>${log.rule_desc}</td>
-      <td>${log.severity}</td>  
-      <td>${log.target}</td>
-      <td>${log.agent_ip}</td>
-      <td>${log.attacker_ip}</td>
-      <td>${log.timestamp}</td>
-      <td>${log.monitor}</td>
-      <td class="${log.is_blocked ? 'blocked' : 'open'}">${log.is_blocked ? 'BLOCKED' : 'OPEN'}</td>
-    `;
+  pagedLogs.forEach(log => {
+    const tr = document.createElement('tr');
+    tr.appendChild(createCell(log.id));
+    tr.appendChild(createCell(log.rule_id));
+    tr.appendChild(createCell(log.rule_desc));
+    tr.appendChild(createCell(log.severity));
+    tr.appendChild(createCell(log.target));
+    tr.appendChild(createCell(log.agent_ip));
+    tr.appendChild(createCell(log.attacker_ip));
+    tr.appendChild(createCell(log.timestamp));
+    tr.appendChild(createCell(log.monitor));
+    tr.appendChild(createCell(log.is_blocked ? 'BLOCKED' : 'OPEN', log.is_blocked ? 'blocked' : 'open'));
     tbody.appendChild(tr);
   });
 
-  renderPagination();
+  renderPagination(document.getElementById("pagination"), allLogs.length, logsPerPage, currentPage, (page) => {
+    currentPage = page;
+    renderLogs();
+  });
 }
 
-function renderPagination() {
-  const paginationDiv = document.getElementById("pagination");
-  paginationDiv.innerHTML = "";
-
-  for (let i = 1; i <= totalPages; i++) {
-    const btn = document.createElement("button");
-    btn.textContent = i;
-    if (i === currentPage) btn.classList.add("active");
-    btn.addEventListener("click", () => {
-      currentPage = i;
-      fetchLogs(currentPage);
-    });
-    paginationDiv.appendChild(btn);
-  }
+async function fetchLogs() {
+  const response = await fetch(`${API_URL}`);
+  const data = await response.json();
+  allLogs = data.data; // Hapus reverse()
+  renderLogs();
 }
 
 fetchLogs();

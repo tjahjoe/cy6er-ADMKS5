@@ -3,6 +3,7 @@ import json
 import asyncio
 import subprocess
 from typing import Any, Dict, List
+from datetime import datetime
 
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -36,6 +37,31 @@ def get_connection():
         database=os.getenv("DB_NAME", "cy6er"),
         autocommit=True
     )
+
+def safe_get(d, path, default="N/A"):
+    try:
+        for key in path.split("."):
+            if isinstance(d, list):
+                key = int(key)
+            d = d[key]
+        if d in ["", None]:
+            return default
+        return d
+    except:
+        return default
+    
+def format_timestamp_for_mysql(ts: str) -> str:
+    if not ts or ts in ["", "N/A", None]:
+        return None
+    try:
+        dt = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S.%fZ")
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        try:
+            dt = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        except:
+            return ts
 
 def _set_ip_status_db_blocking(ip: str) -> bool:
     """
@@ -109,8 +135,40 @@ def _insert_log_db_blocking(data: Dict):
         ))
         conn.commit()
     except Exception as e:
-        # jika gagal insert log, tampilkan error tetapi jangan crash server
         print("[ERROR] _insert_log_db_blocking:", e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+def _insert_wazuh_log_blocking(data: Dict):
+    conn = get_connection()
+    cursor = conn.cursor()
+    query = """
+        INSERT INTO wazuh_logs 
+        (rule_id, rule_desc, severity, target, agent_ip, attacker_ip, log_raw, timestamp, monitor)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+    values = (
+        data.get("rule_id"),
+        data.get("rule_desc"),
+        data.get("severity"),
+        data.get("target"),
+        data.get("agent_ip"),
+        data.get("attacker_ip"),
+        data.get("log_raw"),
+        data.get("timestamp"),
+        data.get("monitor")
+    )
+    try:
+        cursor.execute(query, values)
+        conn.commit()
+    except Exception as e:
+        print("[ERROR] _insert_wazuh_log_blocking:", e)
         try:
             conn.rollback()
         except Exception:
@@ -122,6 +180,9 @@ def _insert_log_db_blocking(data: Dict):
 
 async def insert_log_db(data: Dict):
     await asyncio.to_thread(_insert_log_db_blocking, data)
+
+async def insert_wazuh_log(data: Dict):
+    await asyncio.to_thread(_insert_wazuh_log_blocking, data)
 
 def _get_last_n_statuses_blocking(ip: str, n: int = 6):
     ip = normalize_ip(ip)
@@ -317,6 +378,103 @@ async def manual_unblock(ip: str):
 async def list_ip_status():
     rows = await get_all_ip_status()
     return rows
+
+@app.post("/webhook/wazuh")
+async def receive_wazuh_webhook(request: Request):
+    try:
+        raw_body = await request.body()
+        try:
+            payload = json.loads(raw_body)
+        except:
+            return JSONResponse(
+                status_code=200,
+                content={"status": "failed", "message": "Invalid JSON"}
+            )
+        
+        data = payload.get("alert_data", {})
+        
+        rule_id = (
+            data.get("rule_id")
+            or safe_get(payload, "alert.rule.id")
+            or safe_get(payload, "results.0.hits.hits.0._source.rule.id")
+        )
+        rule_desc = (
+            data.get("rule_desc")
+            or safe_get(payload, "alert.rule.description")
+            or safe_get(payload, "results.0.hits.hits.0._source.rule.description")
+        )
+        severity = (
+            data.get("severity")
+            or safe_get(payload, "alert.rule.level", 0)
+            or safe_get(payload, "results.0.hits.hits.0._source.rule.level", 0)
+        )
+        target = (
+            data.get("target_server")
+            or safe_get(payload, "alert.agent.name")
+            or safe_get(payload, "results.0.hits.hits.0._source.agent.name")
+        )
+        agent_ip = (
+            data.get("agent_ip")
+            or safe_get(payload, "alert.agent.ip")
+            or safe_get(payload, "results.0.hits.hits.0._source.agent.ip")
+        )
+        attacker_ip = (
+            data.get("ip_penyerang")
+            or safe_get(payload, "alert.data.srcip")
+            or safe_get(payload, "results.0.hits.hits.0._source.data.srcip")
+        )
+        log_raw = (
+            data.get("log_mentah")
+            or safe_get(payload, "alert.full_log")
+            or safe_get(payload, "results.0.hits.hits.0._source.full_log")
+        )
+        timestamp = (
+            data.get("timestamp_alert")
+            or safe_get(payload, "alert.timestamp")
+            or safe_get(payload, "results.0.hits.hits.0._source.@timestamp")
+        )
+        timestamp = format_timestamp_for_mysql(timestamp)
+        monitor = data.get("monitor_name") or "parrot"
+
+        clean_alert = {
+            "rule_id": rule_id,
+            "rule_desc": rule_desc,
+            "severity": severity,
+            "target": target,
+            "agent_ip": agent_ip,
+            "attacker_ip": attacker_ip,
+            "log_raw": log_raw,
+            "timestamp": timestamp,
+            "monitor": monitor
+        }
+
+        await insert_wazuh_log(clean_alert)
+        if attacker_ip not in ["N/A", None, ""]:
+            await set_ip_status_db(attacker_ip)
+
+        return JSONResponse(status_code=200, content={"status": "success", "alert": clean_alert})
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.get("/wazuh/logs")
+def api_logs(limit: int = 100):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    query = """
+        SELECT w.id, w.rule_id, w.rule_desc, w.severity, w.target,
+               w.agent_ip, w.attacker_ip, w.log_raw, w.timestamp, w.monitor,
+               IFNULL(i.is_blocked, 0) AS is_blocked
+        FROM wazuh_logs w
+        LEFT JOIN ip_status i ON w.attacker_ip = i.ip
+        ORDER BY w.id DESC
+        LIMIT %s
+    """
+    cursor.execute(query, (limit,))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return {"total": len(rows), "data": rows}
 
 @app.get("/stream")
 async def stream_logs(request: Request):

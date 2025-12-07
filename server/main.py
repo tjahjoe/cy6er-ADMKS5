@@ -14,9 +14,6 @@ from dotenv import load_dotenv
 import requests
 
 from models import SSHLog
-
-print("MAIN VERSION TERBARU JALAN")
-
 load_dotenv()
 ONE_SIGNAL_API_KEY = os.getenv("ONE_SIGNAL_API_KEY")
 ONE_SIGNAL_APP_ID = os.getenv("ONE_SIGNAL_APP_ID")

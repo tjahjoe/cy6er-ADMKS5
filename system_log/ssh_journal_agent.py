@@ -3,7 +3,7 @@ import requests
 import re
 from datetime import datetime
 
-SERVER_URL = "http://127.0.0.1:8008/logs"  
+SERVER_URL = "http://127.0.0.1:8000/logs"  
 
 pattern = re.compile(
     r"(Failed|Accepted) password for (?P<user>\w+) from (?P<ip>\d+\.\d+\.\d+\.\d+)"

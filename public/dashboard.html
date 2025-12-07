@@ -196,7 +196,6 @@ button:active {
 <table id="logTable">
   <thead>
     <tr>
-      <th>ID</th>
       <th>Rule ID</th>
       <th>Description</th>
       <th>Severity</th>
@@ -251,7 +250,6 @@ function renderPagination(container,totalItems,perPage,activePage,onPageChange){
 function addLogRow(log){
   const tr=document.createElement('tr');
   tr.className='wazuh-alert';
-  tr.appendChild(createCell(log.id ?? '-'));
   tr.appendChild(createCell(log.rule_id ?? '-'));
   tr.appendChild(createCell(log.rule_desc ?? '-'));
   tr.appendChild(createCell(log.severity ?? '-'));
@@ -290,7 +288,6 @@ es.onmessage=(ev)=>{
     const payload=JSON.parse(ev.data);
     if(payload.type==='wazuh_alert'){
       allLogs.unshift({
-        id: payload.data.id,
         rule_id: payload.data.rule_id,
         rule_desc: payload.data.rule_desc,
         severity: payload.data.severity,

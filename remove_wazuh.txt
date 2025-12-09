@@ -1,0 +1,30 @@
+sudo systemctl stop wazuh-agent
+sudo systemctl disable wazuh-agent
+
+
+dpkg -l | grep wazuh-agent
+
+
+sudo dpkg -r wazuh-agent
+
+
+sudo dpkg --purge wazuh-agent
+
+
+sudo rm -rf /var/ossec
+sudo rm -rf /etc/ossec-init.conf
+
+
+unset WAZUH_MANAGER
+unset WAZUH_AGENT_NAME
+unset WAZUH_REGISTRATION_PASSWORD
+unset WAZUH_AGENT_GROUP
+
+
+systemctl status wazuh-agent  
+
+
+ls /var/ossec         
+
+
+rm wazuh-agent_4.14.1-1_amd64.deb 

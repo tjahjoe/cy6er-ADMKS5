@@ -76,11 +76,11 @@ Arsitektur ini dirancang modular agar mudah dikembangkan dan diintegrasikan deng
 Berikut struktur direktori utama dalam repository:
 
 cy6er-ADMKS5/
-├── pycache/ # Cache Python (otomatis)
-├── migration/ # File migrasi sistem atau data
-├── public/ # Aset frontend (HTML, CSS, JavaScript)
-├── server/ # Source code backend
-├── system_log/ # Penyimpanan log sistem
-├── .gitignore # Konfigurasi Git ignore
-├── requirements.txt # Daftar dependency Python
-└── README.md # Dokumentasi proyek
+├── pycache/          # Cache Python (otomatis)
+├── migration/        # File migrasi sistem atau data
+├── public/           # Aset frontend (HTML, CSS, JavaScript)
+├── server/           # Source code backend
+├── system_log/       # Penyimpanan log sistem
+├── .gitignore        # Konfigurasi Git ignore
+├── requirements.txt  # Daftar dependency Python
+└── README.md         # Dokumentasi proyek

@@ -1,3 +1,11 @@
+
+| Azzahra Attaqina | Luthfiyyah Adzka Nur S | Najwa Alya Nurizzah | Tri Sukma Sarah | Wahyu Rizky Cahyana |
+|:-------------------:|:---------------:|:--------------:|:--------------------:|:--------------------:|
+| <img src="images/m1.jpg" width="150" height="150" style="border-radius: 10%"> | <img src="images/m2.jpg" width="150" height="150" style="border-radius: 10%"> | <img src="images/m3.jpg" width="150" height="150" style="border-radius: 10%"> | <img src="images/m4.jpg" width="150" height="150" style="border-radius: 10%"> | <img src="images/m5.jpg" width="150" height="150" style="border-radius: 10%"> |
+| 2341720224 | 2341720148 | 2341720230 | 2341720051 | 2341720006 |
+
+---
+
 # cy6er-ADMKS5
 
 ## Deskripsi Proyek
